@@ -59,15 +59,16 @@ function train()
   -- drop learning rate every "epoch_step" epochs
   --if epoch % opt.epoch_step == 0 then optimState.learningRate = optimState.learningRate/2 end
   -- shuffle at each epoch
-  shuffle = torch.randperm(#GTRUTH)
+  local trainnum = #GTRUTH
+  shuffle = torch.randperm(trainnum)
 
-  for t = 1, #GTRUTH, opt.batchSize do
+  for t = 1, trainnum, opt.batchSize do
     -- Disp progress
-    xlua.progress(t, #GTRUTH)
+    xlua.progress(t, trainnum)
 
     -- Create mini batch
     local indx = 1
-    for i = t, math.min(t+opt.batchSize-1, #trainNameList) do
+    for i = t, math.min(t+opt.batchSize-1, trainnum) do
       -- Load new sample
       local tmp = GTRUTH[shuffle[i]]
       local imname = tmp[1]
@@ -86,7 +87,7 @@ function train()
       targets[{ indx, 5, indRow, indCol}] = H
       indx = indx + 1
     end
-
+		
     -- create closure to evaluate f(X) and df/dX
     local feval = function(x)
       -- get new parameters
@@ -97,7 +98,8 @@ function train()
       gradParameters:zero()
       -- evaluate function for complete mini batch
       -- estimate f
-      local output = model:forward(inputs):squeeze()
+      local output = model:forward(inputs)
+      output = output[1]
       local f = criterion:forward(output, targets)
       table.insert(cost, f)
       -- estimate df/dW
