@@ -15,8 +15,8 @@ end
 
 -- conv7 & conv8
 detect_model_all = nn.ConcatTable()
-outputnum = {128, 256, 64000} -- bbox, pixel, label
-reshapesize = {2, 4, 1000}
+outputnum = {64, 256, 6400} -- bbox, pixel, label
+reshapesize = {1, 4, 100}
 for i = 1, 2 do
   detect_model = nn.Sequential()
   detect_model:add(cudnn.SpatialConvolution(4096, 4096, 1, 1, 1, 1, 0, 0, 1))
@@ -30,11 +30,15 @@ end
 
 -- The whole model
 model:add(detect_model_all)
+model:add(nn.JoinTable(2))
 
-
-
-print(model)
-print(model:cuda():forward(torch.CudaTensor(1, 3, 480, 640)))
+-- Test model
+-- print(model)
+-- model = model:cuda()
+-- output = model:forward(torch.CudaTensor(1, 3, 480, 640)):squeeze()
+-- print(output)
+-- criterion = nn.AbsCriterion():cuda()--nn.MSECriterion():cuda()
+-- local f = criterion:forward(output, output)
 
 return model
 

@@ -50,10 +50,10 @@ for i = 1, 10 do
   print(id)
   id = id + 1
 end
-print(GTRUTH)
+--print(GTRUTH)
 
 -- Test labels, back to rectangle, we know indX, indY, disX, disY, W, H
----[[
+--[[
 local imname = '00001.ppm'
 local img = image.load(IMFILE..imname)
 img = image.scale(img, 640, 480)

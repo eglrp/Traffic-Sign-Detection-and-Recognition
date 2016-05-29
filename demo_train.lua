@@ -7,26 +7,18 @@ local c = require 'trepl.colorize'
 
 
 opt = lapp[[
-   -s,--save                             (default "logs")                                    subdirectory to save logs
-   -b,--batchSize                    (default 2)                                          batch size
-   -r,--learningRate               (default 1e-4)                                      learning rate
-   --learningRateDecay        (default 1e-7)                                      learning rate decay
-   --weightDecay                   (default 5e-4)                                      weightDecay
-   -m,--momentum               (default 0.9)                                         momentum
-   --epoch_step                      (default 25)                                         epoch step
-   --model                              (default nin_imagenet_pretrain)      model name
-   --max_epoch                      (default 300)                                      maximum number of iterations
-   --type                                  (default cuda)                                     cuda or double
+   -s,--save										(default "logs")                       subdirectory to save logs
+   -b,--batchSize								(default 1)                            batch size
+   -r,--learningRate            (default 1e-4)                         learning rate
+   --learningRateDecay          (default 1e-7)                         learning rate decay
+   --weightDecay                (default 5e-4)                         weightDecay
+   -m,--momentum                (default 0.9)                          momentum
+   --epoch_step                 (default 25)                           epoch step
+   --max_epoch                  (default 400)                          maximum number of iterations
+   --type                       (default cuda)                         cuda or double
 ]]
 
 print(opt)
-
-print(c.blue '==>' ..' configuring model')
-dofile('data_preprocess_changeform.lua')
-model = dofile('models/'..opt.model..'.lua'):cuda()
---model = torch.load('./trained_models/NRIQA_MODEL_NewForm.t7'):cuda()
-
-print(model)
 
 print('Will save at '..opt.save)
 paths.mkdir(opt.save)
@@ -34,12 +26,15 @@ testLogger = optim.Logger(paths.concat(opt.save, 'test.log'))
 testLogger:setNames{'% mean class accuracy (train set)', '% mean class accuracy (test set)'}
 testLogger.showPlot = false
 
+print(c.red'==>'..c.red' load model')
+model = dofile('generate_model.lua'):cuda()
 parameters, gradParameters = model:getParameters()
+print(model)
 
-print(c.blue'==>' ..' setting criterion')
-criterion = nn.MSECriterion():cuda()
+print(c.red'==>' ..c.red' setting criterion')
+criterion = nn.AbsCriterion():cuda()--nn.MSECriterion():cuda()
 
-print(c.blue'==>' ..' configuring optimizer')
+print(c.red'==>'..c.red' configuring optimizer')
 optimState = {
   learningRate = opt.learningRate,
   weightDecay = opt.weightDecay,
@@ -47,34 +42,48 @@ optimState = {
   learningRateDecay = opt.learningRateDecay,
 }
 
+print(c.red'==>'..c.red' load labels')
+dofile('demo_createlabel.lua')
 
 function train()
 
+  model:training()
+
   local cost = {}
-  local inputs = torch.Tensor(opt.batchSize, 3, 224, 224)
-  local targets = torch.Tensor(opt.batchSize)
+  local inputs = torch.Tensor(opt.batchSize, 3, 480, 640):zero()
+  local targets = torch.Tensor(opt.batchSize, 5, 120, 160):zero()
   if opt.type == 'double' then inputs = inputs:double()
   elseif opt.type == 'cuda' then inputs = inputs:cuda() targets = targets:cuda() end
 
-  model:training()
   --epoch = epoch or 1
   -- drop learning rate every "epoch_step" epochs
   --if epoch % opt.epoch_step == 0 then optimState.learningRate = optimState.learningRate/2 end
   -- shuffle at each epoch
-  shuffle = torch.randperm(#trainNameList)
+  shuffle = torch.randperm(#GTRUTH)
 
-  for t = 1, #trainNameList, opt.batchSize do
-    -- disp progress
-    xlua.progress(t, #trainNameList)
+  for t = 1, #GTRUTH, opt.batchSize do
+    -- Disp progress
+    xlua.progress(t, #GTRUTH)
 
-    -- create mini batch
+    -- Create mini batch
     local indx = 1
     for i = t, math.min(t+opt.batchSize-1, #trainNameList) do
-      -- load new sample
-      local tpname = trainNameList[shuffle[i]]
-      tpname = './datas/LIVE_imagepatches/'..tpname
-      inputs[{ indx, {},{},{} }] = preprocess(image.load(tpname), img_mean)
-      targets[indx] = trainLabels[shuffle[i]]
+      -- Load new sample
+      local tmp = GTRUTH[shuffle[i]]
+      local imname = tmp[1]
+      local indCol = tmp[2]
+      local indRow = tmp[3]
+      local disCol = tmp[4]
+      local disRow = tmp[5]
+      local W = tmp[6]
+      local H = tmp[7]
+      local img = image.load(IMFILE..imname)
+      inputs[{ indx,{},{},{} }] = image.scale(img, 640, 480)
+      targets[{ indx, 1, indRow, indCol}] = 1
+      targets[{ indx, 2, indRow, indCol}] = disCol
+      targets[{ indx, 3, indRow, indCol}] = disRow
+      targets[{ indx, 4, indRow, indCol}] = W
+      targets[{ indx, 5, indRow, indCol}] = H
       indx = indx + 1
     end
 
@@ -204,29 +213,15 @@ for i = 1,  opt.max_epoch do
   train()
   if (i  == 1 or math.fmod(i, 10) == 0) then
     print('Epoch '..i)
-    trainlcc, trainsrocc, testlcc, testsrocc, testtarg, testout = test()
-    --    table.insert(LCC_train, trainlcc)
-    --    table.insert(SROCC_train, trainsrocc)
-    --    table.insert(LCC_test, testlcc)
-    --    table.insert(SROCC_test, testsrocc)
-
-    --    local tmptesttarg = torch.Tensor.resize(testtarg, (#testtarg)[1]/9, 9):mean(2):squeeze()
-    --    local tmptestout = torch.Tensor.resize(testout, (#testout)[1]/9, 9):mean(2):squeeze()
-    --    local lcc_avg = lcc(tmptesttarg, tmptestout)
-    --    local srocc_avg = srocc(tmptesttarg, tmptestout)
-    --    print('LCC test avg mean: '..lcc_avg..', SROCC test avg mean: '..srocc_avg)
-    --    tmptesttarg = testtarg:median(2):squeeze()
-    --    tmptestout = testtarg:median(2):squeeze()
-    --    lcc_avg = lcc(tmptesttarg, tmptestout)
-    --    srocc_avg = srocc(tmptesttarg, tmptestout)
-    --    print('LCC test avg median: '..lcc_avg..', SROCC test avg median: '..srocc_avg)
+    --trainlcc, trainsrocc, testlcc, testsrocc, testtarg, testout = test()
   end
 end
 
+--[[
 torch.save('./trained_models/NRIQA_MODEL_1024to1.t7'..DISTYPE, model )
 torch.save('./trained_models/LCC_TRAIN_1024to1.t7'..DISTYPE, LCC_train)
 torch.save('./trained_models/LCC_TEST_1024to1.t7'..DISTYPE, LCC_test)
 torch.save('./trained_models/SROCC_TRAIN_1024to1.t7'..DISTYPE, SROCC_train)
 torch.save('./trained_models/SROCC_TEST_1024to1.t7'..DISTYPE, SROCC_test)
-
+--]]
 
