@@ -14,7 +14,7 @@ opt = lapp[[
    --weightDecay                (default 5e-4)                         weightDecay
    -m,--momentum                (default 0.9)                          momentum
    --epoch_step                 (default 25)                           epoch step
-   --max_epoch                  (default 400)                          maximum number of iterations
+   --max_epoch                  (default 2)                          maximum number of iterations
    --type                       (default cuda)                         cuda or double
 ]]
 
@@ -32,7 +32,7 @@ parameters, gradParameters = model:getParameters()
 print(model)
 
 print(c.red'==>' ..c.red' setting criterion')
-criterion = nn.AbsCriterion():cuda()--nn.MSECriterion():cuda()
+criterion = nn.MSECriterion():cuda() --nn.AbsCriterion():cuda()
 
 print(c.red'==>'..c.red' configuring optimizer')
 optimState = {
@@ -51,7 +51,7 @@ function train()
 
   local cost = {}
   local inputs = torch.Tensor(opt.batchSize, 3, 480, 640):zero()
-  local targets = torch.Tensor(opt.batchSize, 5, 120, 160):zero()
+  local targets = torch.Tensor(opt.batchSize, 1, 120, 160):zero()
   if opt.type == 'double' then inputs = inputs:double()
   elseif opt.type == 'cuda' then inputs = inputs:cuda() targets = targets:cuda() end
 
@@ -68,23 +68,27 @@ function train()
 
     -- Create mini batch
     local indx = 1
+    targets:zero()
     for i = t, math.min(t+opt.batchSize-1, trainnum) do
       -- Load new sample
-      local tmp = GTRUTH[shuffle[i]]
+      local tmp = GTRUTH[i] --GTRUTH[shuffle[i]]
       local imname = tmp[1]
-      local indCol = tmp[2]
-      local indRow = tmp[3]
-      local disCol = tmp[4]
-      local disRow = tmp[5]
-      local W = tmp[6]
-      local H = tmp[7]
+      for k = 1, #tmp[2] do
+        local tmptable = tmp[2][k]
+				local indCol = tmptable[1]
+				local indRow = tmptable[2]
+				--local disCol = tmptable[3]
+				--local disRow = tmptable[4]
+				--local W = tmptable[5]
+				--local H = tmptable[6]
+				targets[{ indx, 1, indRow, indCol}] = 1
+				--targets[{ indx, 2, indRow, indCol}] = disCol
+				--targets[{ indx, 3, indRow, indCol}] = disRow
+				--targets[{ indx, 4, indRow, indCol}] = W
+				--targets[{ indx, 5, indRow, indCol}] = H
+      end
       local img = image.load(IMFILE..imname)
       inputs[{ indx,{},{},{} }] = image.scale(img, 640, 480)
-      targets[{ indx, 1, indRow, indCol}] = 1
-      targets[{ indx, 2, indRow, indCol}] = disCol
-      targets[{ indx, 3, indRow, indCol}] = disRow
-      targets[{ indx, 4, indRow, indCol}] = W
-      targets[{ indx, 5, indRow, indCol}] = H
       indx = indx + 1
     end
 		
@@ -118,7 +122,7 @@ function train()
   end
 end
 
-
+--[[
 function test()
 
   model:evaluate()
@@ -204,12 +208,7 @@ function test()
 
   return trainlcc, trainsrocc, testlcc, testsrocc, targets, outputs
 end
-
-
---local LCC_train = {}
---local SROCC_train = {}
---local LCC_test = {}
---local SROCC_test = {}
+--]]
 
 for i = 1,  opt.max_epoch do
   train()
@@ -219,11 +218,7 @@ for i = 1,  opt.max_epoch do
   end
 end
 
---[[
-torch.save('./trained_models/NRIQA_MODEL_1024to1.t7'..DISTYPE, model )
-torch.save('./trained_models/LCC_TRAIN_1024to1.t7'..DISTYPE, LCC_train)
-torch.save('./trained_models/LCC_TEST_1024to1.t7'..DISTYPE, LCC_test)
-torch.save('./trained_models/SROCC_TRAIN_1024to1.t7'..DISTYPE, SROCC_train)
-torch.save('./trained_models/SROCC_TEST_1024to1.t7'..DISTYPE, SROCC_test)
---]]
+-- Save model
+torch.save('./trained_models/model.t7', model)
+
 

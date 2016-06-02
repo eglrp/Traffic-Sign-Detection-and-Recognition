@@ -15,14 +15,17 @@ end
 
 -- conv7 & conv8
 detect_model_all = nn.ConcatTable()
-outputnum = {64+256, 1000} -- bbox, pixel, label
+--outputnum = {64+256, 1000} -- bbox, pixel, label
+outputnum = {64} -- bbox, pixel, label
 for i = 1, 1 do
   detect_model = nn.Sequential()
   detect_model:add(cudnn.SpatialConvolution(4096, 4096, 1, 1, 1, 1, 0, 0, 1))
   detect_model:add(cudnn.ReLU(true))
   detect_model:add(nn.Dropout(0.500000))
   detect_model:add(cudnn.SpatialConvolution(4096, outputnum[i], 1, 1, 1, 1, 0, 0, 1))
-  detect_model:add(nn.Reshape(5, 120, 160))
+  detect_model:add(cudnn.Sigmoid())
+  --detect_model:add(nn.Reshape(5, 120, 160))
+  detect_model:add(nn.Reshape(1, 120, 160))
   detect_model_all:add(detect_model)
 end
 
