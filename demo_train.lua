@@ -3,22 +3,27 @@ require 'optim'
 require 'pl'
 require 'cudnn'
 require 'gnuplot'
+require 'image'
 local c = require 'trepl.colorize'
 
 
 opt = lapp[[
    -s,--save										(default "logs")                       subdirectory to save logs
    -b,--batchSize								(default 1)                            batch size
-   -r,--learningRate            (default 1e-4)                         learning rate
-   --learningRateDecay          (default 1e-7)                         learning rate decay
-   --weightDecay                (default 5e-4)                         weightDecay
+   -r,--learningRate            (default 1e-2)                         learning rate
+   --learningRateDecay          (default 0)                         learning rate decay
+   --weightDecay                (default 0)                         weightDecay
    -m,--momentum                (default 0.9)                          momentum
    --epoch_step                 (default 25)                           epoch step
-   --max_epoch                  (default 2)                          maximum number of iterations
+   --max_epoch                  (default 10)                          maximum number of iterations
    --type                       (default cuda)                         cuda or double
 ]]
 
 print(opt)
+
+DATA = torch.load('DATA.t7')
+IMGPATCH = DATA[1]
+IMGMASK = DATA[2]
 
 print('Will save at '..opt.save)
 paths.mkdir(opt.save)
@@ -27,12 +32,13 @@ testLogger:setNames{'% mean class accuracy (train set)', '% mean class accuracy 
 testLogger.showPlot = false
 
 print(c.red'==>'..c.red' load model')
-model = dofile('generate_model.lua'):cuda()
+-- model = dofile('generate_model.lua'):cuda()
+model = torch.load('./trained_models/model.t7'):cuda()
 parameters, gradParameters = model:getParameters()
 print(model)
 
-print(c.red'==>' ..c.red' setting criterion')
-criterion = nn.MSECriterion():cuda() --nn.AbsCriterion():cuda()
+--print(c.red'==>' ..c.red' setting criterion')
+--criterion = nn.BCECriterion():cuda()
 
 print(c.red'==>'..c.red' configuring optimizer')
 optimState = {
@@ -42,16 +48,13 @@ optimState = {
   learningRateDecay = opt.learningRateDecay,
 }
 
-print(c.red'==>'..c.red' load labels')
-dofile('demo_createlabel.lua')
-
 function train()
 
   model:training()
 
   local cost = {}
-  local inputs = torch.Tensor(opt.batchSize, 3, 480, 640):zero()
-  local targets = torch.Tensor(opt.batchSize, 1, 120, 160):zero()
+  local inputs = torch.Tensor(opt.batchSize, 3, 128, 128):zero()
+  local targets = torch.Tensor(opt.batchSize, 64, 4, 4):zero()
   if opt.type == 'double' then inputs = inputs:double()
   elseif opt.type == 'cuda' then inputs = inputs:cuda() targets = targets:cuda() end
 
@@ -59,7 +62,7 @@ function train()
   -- drop learning rate every "epoch_step" epochs
   --if epoch % opt.epoch_step == 0 then optimState.learningRate = optimState.learningRate/2 end
   -- shuffle at each epoch
-  local trainnum = #GTRUTH
+  local trainnum = IMGPATCH:size(1)
   shuffle = torch.randperm(trainnum)
 
   for t = 1, trainnum, opt.batchSize do
@@ -71,24 +74,16 @@ function train()
     targets:zero()
     for i = t, math.min(t+opt.batchSize-1, trainnum) do
       -- Load new sample
-      local tmp = GTRUTH[i] --GTRUTH[shuffle[i]]
-      local imname = tmp[1]
-      for k = 1, #tmp[2] do
-        local tmptable = tmp[2][k]
-				local indCol = tmptable[1]
-				local indRow = tmptable[2]
-				--local disCol = tmptable[3]
-				--local disRow = tmptable[4]
-				--local W = tmptable[5]
-				--local H = tmptable[6]
-				targets[{ indx, 1, indRow, indCol}] = 1
-				--targets[{ indx, 2, indRow, indCol}] = disCol
-				--targets[{ indx, 3, indRow, indCol}] = disRow
-				--targets[{ indx, 4, indRow, indCol}] = W
-				--targets[{ indx, 5, indRow, indCol}] = H
+      inputs[indx] = IMGPATCH[shuffle[i]]
+      local mask = IMGMASK[shuffle[i]]
+      -- Change mask shape
+      for idr = 1, 4 do
+      	for idc = 1, 4 do
+      	  local tmpr = { (idr-1)*8+1, idr*8 }
+      	  local tmpc = { (idc-1)*8+1, idc*8 }
+      		targets[{ indx,{},idr,idc }] = torch.reshape(mask[{ tmpr,tmpc }], 64, 1)
+      	end
       end
-      local img = image.load(IMFILE..imname)
-      inputs[{ indx,{},{},{} }] = image.scale(img, 640, 480)
       indx = indx + 1
     end
 		
@@ -103,7 +98,46 @@ function train()
       -- evaluate function for complete mini batch
       -- estimate f
       local output = model:forward(inputs)
-      output = output[1]
+      
+      -- Tiling
+      ---[[
+      local outputnew = torch.CudaTensor(1, 1, 32, 32):zero()
+      local targetnew = torch.CudaTensor(1, 1, 32, 32):zero()
+      for idr = 1, 4 do
+      	for idc = 1, 4 do
+      	  local tmpr = { (idr-1)*8+1, idr*8 }
+      	  local tmpc = { (idc-1)*8+1, idc*8 }
+      		outputnew[{ 1,1,tmpr,tmpc }] = torch.reshape(output[{ 1,{},idr,idc }], 8, 8)
+      		targetnew[{ 1,1,tmpr,tmpc }] = torch.reshape(targets[{ 1,{},idr,idc }], 8, 8)
+      	end
+      end
+      --]]
+      
+      ---[[
+			local dd1 = image.toDisplayTensor{input=outputnew:squeeze(),
+				padding = 2,
+				nrow = math.floor(math.sqrt(64)),
+				symmetric = true,
+			}
+      d1 = image.display{image = dd1, win = d1}
+			local dd2 = image.toDisplayTensor{input=targetnew:squeeze(),
+				padding = 2,
+				nrow = math.floor(math.sqrt(64)),
+				symmetric = true,
+			}
+			d2 = image.display{image = dd2, win = d2}
+			local dd3 = image.toDisplayTensor{input=model:get(1).weight:clone():reshape(96, 3, 11, 11),
+				padding = 2,
+				nrow = math.floor(math.sqrt(96)),
+				symmetric = true,
+			}
+			d3 = image.display{image=dd3, win=d3, legend='Layer 1 filters'}
+			--]]
+      
+      local weights = targets:eq(1) * 10  
+      --criterion = nn.BCECriterion(weights:float():view(-1)):cuda()
+      criterion = nn.BCECriterion():cuda()
+        
       local f = criterion:forward(output, targets)
       table.insert(cost, f)
       -- estimate df/dW
@@ -212,6 +246,17 @@ end
 
 for i = 1,  opt.max_epoch do
   train()
+  
+  -- View kernels
+	--[[
+	local d1 = image.toDisplayTensor{input=model:get(1).weight:clone():reshape(96, 3, 11, 11),
+		padding = 2,
+		nrow = math.floor(math.sqrt(96)),
+		symmetric = true,
+	}
+	image.display{image=d1, legend='Layer 1 filters'}
+	--]]
+	
   if (i  == 1 or math.fmod(i, 10) == 0) then
     print('Epoch '..i)
     --trainlcc, trainsrocc, testlcc, testsrocc, testtarg, testout = test()
