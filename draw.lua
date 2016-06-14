@@ -1,18 +1,17 @@
 require 'image'
 local draw = {}
 
-function draw.drawBox(img, x, y, w, h, lineWidth, color)
-  print('Drawing Box')
+function draw.drawBox(img, top, bottom, left, right, lineWidth, color)
   if color == nil then
-    color = {1, 0, 0}
+    color = {0, 1, 0}
   end
   local imsize = #img
   local imC, imW, imH = imsize[1], imsize[3], imsize[2]
   local topleft, bottomright = {}, {} 
-  topleft.x = x --(x - h/2)
-  topleft.y = y --(y - w/2)
-  bottomright.x = x + h --(x + h/2)
-  bottomright.y = y + w --(y + w/2)
+  topleft.x = torch.round(top * imH) 
+  topleft.y = torch.round(left * imW)
+  bottomright.x = torch.round(bottom * imH)
+  bottomright.y = torch.round(right * imW)
   if imC == 3 then
     -- Line one
     img[1][{ {topleft.x, bottomright.x},{topleft.y, topleft.y+lineWidth} }] = color[1]

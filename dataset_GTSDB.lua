@@ -75,10 +75,10 @@ print(GTRUTH)
 local patchsize = 128
 local step = 64
 local masksize = patchsize / 4
-local totalnum = 3366
-IMAGEPATCH = torch.Tensor(totalnum, 3, patchsize, patchsize)
-IMAGEMASK = torch.Tensor(totalnum, masksize, masksize)
-PATCHSCORE = torch.Tensor(totalnum, 1)
+local totalnum = 3255
+IMAGEPATCH = torch.Tensor(totalnum, 3, patchsize, patchsize):zero()
+IMAGEMASK = torch.Tensor(totalnum, 5, masksize, masksize):zero()
+PATCHSCORE = torch.Tensor(totalnum, 1):zero()
 local indpatch = 1
 
 for i = 1, #GTRUTH do
@@ -88,12 +88,14 @@ for i = 1, #GTRUTH do
   local img = image.load(IMREFILE..imname)
   local imgmask = torch.Tensor(480, 640):zero()
   local area = {}
+  local indleft, indright, indtop, indbottom
+  
   for k = 1, #tmpgruth[2] do
-    local tmptable = tmpgruth[2][k]
-		local indleft = tmptable[1]
-		local indright = tmptable[2]
-		local indtop = tmptable[3]
-		local indbottom = tmptable[4]
+    tmptable = tmpgruth[2][k]
+		indleft = tmptable[1]
+		indright = tmptable[2]
+		indtop = tmptable[3]
+		indbottom = tmptable[4]
 		local tmparea = (indbottom-indtop+1) * (indright-indleft+1)
 		table.insert(area, tmparea)
 		imgmask[{ {indtop,indbottom},{indleft,indright} }] = k
@@ -120,11 +122,34 @@ for i = 1, #GTRUTH do
   		end
   		
   		-- Select data
-  		if (score >= 0.7) then
+  		if (score >= 0.75) then
 				IMAGEPATCH[{ indpatch,{},{},{} }] = img[{ {},{indr,indr+patchsize-1},{indc,indc+patchsize-1} }] 
-				tmpmask = image.scale(tmpmask, masksize, masksize)
-				tmpmask[tmpmask:gt(0)] = 1
-				IMAGEMASK[{indpatch,{},{} }] = tmpmask
+				local mask = image.scale(tmpmask, masksize, masksize,'simple')
+				local tmp = torch.Tensor(mask:size()):zero()
+				tmp[mask:gt(0)] = 1
+				IMAGEMASK[{ indpatch,1,{},{} }] = tmp
+				
+				for idx = 1, tmpmask:max() do			
+					local location_large = tmpmask:eq(idx):nonzero()
+					local location_small = mask:eq(idx):nonzero()
+					if (location_small:dim() > 0) then
+						local top = location_large[1][1] / patchsize
+						local bottom = location_large[-1][1] / patchsize
+						local left = location_large[1][2] / patchsize
+						local right = location_large[-1][2]	/ patchsize
+						
+						local top_s = location_small[1][1]
+						local bottom_s = location_small[-1][1]
+						local left_s = location_small[1][2]
+						local right_s = location_small[-1][2]
+						
+						IMAGEMASK[{ indpatch,2,{top_s,bottom_s},{left_s,right_s} }] = top
+						IMAGEMASK[{ indpatch,3,{top_s,bottom_s},{left_s,right_s} }] = bottom
+						IMAGEMASK[{ indpatch,4,{top_s,bottom_s},{left_s,right_s} }] = left
+						IMAGEMASK[{ indpatch,5,{top_s,bottom_s},{left_s,right_s} }] = right
+					end
+				end
+				
 				PATCHSCORE[indpatch] = score
 				indpatch = indpatch + 1
 				print(indpatch)
@@ -151,8 +176,23 @@ local data = {IMAGEPATCH, IMAGEMASK, PATCHSCORE}
 torch.save('./DATA.t7', data)
 
 -- Test data
-local ind = 100
-image.display(IMAGEPATCH[ind])
-image.display(IMAGEMASK[ind])
+--[[
+local ind = 1
+local img = IMAGEPATCH[{ ind,{},{},{} }]
+local mask = IMAGEMASK[{ ind,{1},{},{} }]
+for i = 1, mask:size(2) do
+	for j = 1, mask:size(3) do
+		if (mask[{ 1,i,j }] >= 0.95) then
+			local top = IMAGEMASK[{ ind,2,i,j }]
+			local bottom = IMAGEMASK[{ ind,3,i,j }]
+			local left = IMAGEMASK[{ ind,4,i,j }]
+			local right = IMAGEMASK[{ ind,5,i,j }]
+			draw.drawBox(img, top, bottom, left, right, 1)
+		end
+	end
+end
+image.display(img)
+image.display(mask)
 print(PATCHSCORE[ind])
+--]]
 

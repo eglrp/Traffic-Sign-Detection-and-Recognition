@@ -2,6 +2,7 @@ require 'image'
 require 'nn'
 require 'cunn'
 require 'cudnn'
+require 'gnuplot'
 torch.setdefaulttensortype('torch.FloatTensor')
 
 -- Functions
@@ -38,9 +39,14 @@ image.display{image=d1, legend='Layer 1 filters'}
 --myFile:close()
 --]]
 
-local imname = '00010.ppm'
+local imname = '00100.ppm'
 local mean_std = torch.load('MEAN_STD.t7')
-local img = image.load(IMFILE..imname)
+local img_old = image.load(IMFILE..imname)
+
+--local img_old = image.load('./testimg3.jpg')
+--local img_old = image.scale(img_old, 640, 480)
+
+local img = img_old:clone()
 normalize_global(img, mean_std[1], mean_std[2])
 normalize_local(img)
 
@@ -55,8 +61,13 @@ for idr = 1, 15 do
 		outputnew[{ 1,tmpr,tmpc }] = torch.reshape(output[{ {},idr,idc }], 8, 8)
 	end
 end
-output = outputnew
+output = image.scale(outputnew, 640, 480):squeeze()
+output = output:ge(0.95)
+local tmp = img_old[2]
+tmp[output] = 1
+img_old[2] = tmp
 
-image.display(image.load(IMFILE..imname))
-image.display(image.scale(output, 640, 480))
+image.display(img_old)
+--gnuplot.imagesc(output, 'color')
+image.display(output)
 

@@ -32,13 +32,13 @@ testLogger:setNames{'% mean class accuracy (train set)', '% mean class accuracy 
 testLogger.showPlot = false
 
 print(c.red'==>'..c.red' load model')
--- model = dofile('generate_model.lua'):cuda()
-model = torch.load('./trained_models/model.t7'):cuda()
+model = dofile('generate_model.lua'):cuda()
+--model = torch.load('./trained_models/model.t7'):cuda()
 parameters, gradParameters = model:getParameters()
 print(model)
 
---print(c.red'==>' ..c.red' setting criterion')
---criterion = nn.BCECriterion():cuda()
+print(c.red'==>' ..c.red' setting criterion')
+criterion = nn.MSECriterion():cuda()
 
 print(c.red'==>'..c.red' configuring optimizer')
 optimState = {
@@ -54,7 +54,7 @@ function train()
 
   local cost = {}
   local inputs = torch.Tensor(opt.batchSize, 3, 128, 128):zero()
-  local targets = torch.Tensor(opt.batchSize, 64, 4, 4):zero()
+  local targets = torch.Tensor(opt.batchSize, 64+256, 4, 4):zero()
   if opt.type == 'double' then inputs = inputs:double()
   elseif opt.type == 'cuda' then inputs = inputs:cuda() targets = targets:cuda() end
 
@@ -81,7 +81,7 @@ function train()
       	for idc = 1, 4 do
       	  local tmpr = { (idr-1)*8+1, idr*8 }
       	  local tmpc = { (idc-1)*8+1, idc*8 }
-      		targets[{ indx,{},idr,idc }] = torch.reshape(mask[{ tmpr,tmpc }], 64, 1)
+      		targets[{ indx,{},idr,idc }] = torch.reshape(mask[{ {},tmpr,tmpc }], 64+256, 1)
       	end
       end
       indx = indx + 1
@@ -101,26 +101,26 @@ function train()
       
       -- Tiling
       ---[[
-      local outputnew = torch.CudaTensor(1, 1, 32, 32):zero()
-      local targetnew = torch.CudaTensor(1, 1, 32, 32):zero()
+      local outputnew = torch.CudaTensor(1, 5, 32, 32):zero()
+      local targetnew = torch.CudaTensor(1, 5, 32, 32):zero()
       for idr = 1, 4 do
       	for idc = 1, 4 do
       	  local tmpr = { (idr-1)*8+1, idr*8 }
       	  local tmpc = { (idc-1)*8+1, idc*8 }
-      		outputnew[{ 1,1,tmpr,tmpc }] = torch.reshape(output[{ 1,{},idr,idc }], 8, 8)
-      		targetnew[{ 1,1,tmpr,tmpc }] = torch.reshape(targets[{ 1,{},idr,idc }], 8, 8)
+      		outputnew[{ 1,{},tmpr,tmpc }] = torch.reshape(output[{ 1,{},idr,idc }], 5, 8, 8)
+      		targetnew[{ 1,{},tmpr,tmpc }] = torch.reshape(targets[{ 1,{},idr,idc }], 5, 8, 8)
       	end
       end
       --]]
       
       ---[[
-			local dd1 = image.toDisplayTensor{input=outputnew:squeeze(),
+			local dd1 = image.toDisplayTensor{input=outputnew[{ 1,1,{},{} }]:squeeze(),
 				padding = 2,
 				nrow = math.floor(math.sqrt(64)),
 				symmetric = true,
 			}
       d1 = image.display{image = dd1, win = d1}
-			local dd2 = image.toDisplayTensor{input=targetnew:squeeze(),
+			local dd2 = image.toDisplayTensor{input=targetnew[{ 1,1,{},{} }]:squeeze(),
 				padding = 2,
 				nrow = math.floor(math.sqrt(64)),
 				symmetric = true,
@@ -134,9 +134,8 @@ function train()
 			d3 = image.display{image=dd3, win=d3, legend='Layer 1 filters'}
 			--]]
       
-      local weights = targets:eq(1) * 10  
+      -- local weights = targets:eq(1) * 10  
       --criterion = nn.BCECriterion(weights:float():view(-1)):cuda()
-      criterion = nn.BCECriterion():cuda()
         
       local f = criterion:forward(output, targets)
       table.insert(cost, f)
@@ -154,6 +153,7 @@ function train()
     gnuplot.plot(torch.Tensor(cost))
 
   end
+  print("  Mean cost: "..torch.Tensor(cost):mean())
 end
 
 --[[
@@ -245,6 +245,7 @@ end
 --]]
 
 for i = 1,  opt.max_epoch do
+  print('Epoch '..i)
   train()
   
   -- View kernels
@@ -257,10 +258,10 @@ for i = 1,  opt.max_epoch do
 	image.display{image=d1, legend='Layer 1 filters'}
 	--]]
 	
-  if (i  == 1 or math.fmod(i, 10) == 0) then
-    print('Epoch '..i)
+  --if (i  == 1 or math.fmod(i, 10) == 0) then
+    --print('Epoch '..i)
     --trainlcc, trainsrocc, testlcc, testsrocc, testtarg, testout = test()
-  end
+  --end
 end
 
 -- Save model
