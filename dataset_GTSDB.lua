@@ -5,9 +5,9 @@ require 'nn'
 draw = require 'draw'
 torch.setdefaulttensortype('torch.FloatTensor')
 
-GTFILE = '/media/administrator/文档/我的文件/Tencent_Model/GTSDB/FullIJCNN2013/gt.txt'
-IMFILE = '/media/administrator/文档/我的文件/Tencent_Model/GTSDB/FullIJCNN2013/'
-IMREFILE = '/media/administrator/文档/我的文件/Tencent_Model/GTSDB/resized/'
+GTFILE = '/media/lab/52347F6D347F5349/detection_model/FullIJCNN2013/gt.txt'
+IMFILE = '/media/lab/52347F6D347F5349/detection_model/FullIJCNN2013/'
+IMREFILE = '/media/lab/52347F6D347F5349/detection_model/resized/'
 
 -- Functions
 function normalize_global(dataset, mean, std)
@@ -143,10 +143,21 @@ for i = 1, #GTRUTH do
 						local left_s = location_small[1][2]
 						local right_s = location_small[-1][2]
 						
+            -- Generate bbox
+--[[
 						IMAGEMASK[{ indpatch,2,{top_s,bottom_s},{left_s,right_s} }] = top
 						IMAGEMASK[{ indpatch,3,{top_s,bottom_s},{left_s,right_s} }] = bottom
 						IMAGEMASK[{ indpatch,4,{top_s,bottom_s},{left_s,right_s} }] = left
-						IMAGEMASK[{ indpatch,5,{top_s,bottom_s},{left_s,right_s} }] = right
+						IMAGEMASK[{ indpatch,5,{top_s,bottom_s},{left_s,right_s} }] = right					
+--]]	
+  					-- Generate patial mask
+						local r_half = torch.floor(top_s+(bottom_s-top_s)/2)
+						local c_half = torch.floor(left_s+(right_s-left_s)/2) 
+						IMAGEMASK[{ indpatch,2,{top_s,r_half},{left_s,right_s} }] = 1--top
+						IMAGEMASK[{ indpatch,3,{r_half,bottom_s},{left_s,right_s} }] = 1--bottom
+						IMAGEMASK[{ indpatch,4,{top_s,bottom_s},{left_s,c_half} }] = 1--left
+						IMAGEMASK[{ indpatch,5,{top_s,bottom_s},{c_half,right_s} }] = 1--right
+
 					end
 				end
 				
@@ -175,7 +186,7 @@ print('Positive pencentage: '..pos..'%')
 local data = {IMAGEPATCH, IMAGEMASK, PATCHSCORE}
 torch.save('./DATA.t7', data)
 
--- Test data
+-- Test data bbox
 --[[
 local ind = 1
 local img = IMAGEPATCH[{ ind,{},{},{} }]
@@ -194,5 +205,13 @@ end
 image.display(img)
 image.display(mask)
 print(PATCHSCORE[ind])
+--]]
+
+-- Test data patial mask
+---[[
+local ind = 1
+local img = IMAGEPATCH[{ ind,{},{},{} }]
+image.display(img)
+image.display(IMAGEMASK[{ ind,{},{},{} }])
 --]]
 

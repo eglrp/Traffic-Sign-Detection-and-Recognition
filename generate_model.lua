@@ -47,7 +47,7 @@ image.display{image=d1, legend='Layer 1 filters'}
 --]]
 
 -- Test model
---[[
+---[[
 print(model)
 model = model:cuda()
 local input = torch.CudaTensor(1, 3, 128, 128)

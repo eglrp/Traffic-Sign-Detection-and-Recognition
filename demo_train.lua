@@ -2,6 +2,7 @@ require 'xlua'
 require 'optim'
 require 'pl'
 require 'cudnn'
+require 'cunn'
 require 'gnuplot'
 require 'image'
 local c = require 'trepl.colorize'
@@ -15,7 +16,7 @@ opt = lapp[[
    --weightDecay                (default 0)                         weightDecay
    -m,--momentum                (default 0.9)                          momentum
    --epoch_step                 (default 25)                           epoch step
-   --max_epoch                  (default 10)                          maximum number of iterations
+   --max_epoch                  (default 3)                          maximum number of iterations
    --type                       (default cuda)                         cuda or double
 ]]
 
@@ -32,8 +33,8 @@ testLogger:setNames{'% mean class accuracy (train set)', '% mean class accuracy 
 testLogger.showPlot = false
 
 print(c.red'==>'..c.red' load model')
-model = dofile('generate_model.lua'):cuda()
---model = torch.load('./trained_models/model.t7'):cuda()
+--model = dofile('generate_model.lua'):cuda()
+model = torch.load('./trained_models/model.t7'):cuda()
 parameters, gradParameters = model:getParameters()
 print(model)
 
@@ -114,13 +115,13 @@ function train()
       --]]
       
       ---[[
-			local dd1 = image.toDisplayTensor{input=outputnew[{ 1,1,{},{} }]:squeeze(),
+			local dd1 = image.toDisplayTensor{input=outputnew[{ 1,{},{},{} }]:squeeze(),
 				padding = 2,
 				nrow = math.floor(math.sqrt(64)),
 				symmetric = true,
 			}
       d1 = image.display{image = dd1, win = d1}
-			local dd2 = image.toDisplayTensor{input=targetnew[{ 1,1,{},{} }]:squeeze(),
+			local dd2 = image.toDisplayTensor{input=targetnew[{ 1,{},{},{} }]:squeeze(),
 				padding = 2,
 				nrow = math.floor(math.sqrt(64)),
 				symmetric = true,

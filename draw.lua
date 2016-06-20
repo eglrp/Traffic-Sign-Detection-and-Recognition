@@ -8,10 +8,10 @@ function draw.drawBox(img, top, bottom, left, right, lineWidth, color)
   local imsize = #img
   local imC, imW, imH = imsize[1], imsize[3], imsize[2]
   local topleft, bottomright = {}, {} 
-  topleft.x = torch.round(top * imH) 
-  topleft.y = torch.round(left * imW)
-  bottomright.x = torch.round(bottom * imH)
-  bottomright.y = torch.round(right * imW)
+  topleft.x = top
+  topleft.y = left
+  bottomright.x = bottom
+  bottomright.y = right
   if imC == 3 then
     -- Line one
     img[1][{ {topleft.x, bottomright.x},{topleft.y, topleft.y+lineWidth} }] = color[1]
