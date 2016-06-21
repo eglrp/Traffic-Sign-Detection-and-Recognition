@@ -44,10 +44,10 @@ image.display{image=d1, legend='Layer 1 filters'}
 
 local imname = '00343.ppm'
 local mean_std = torch.load('MEAN_STD.t7')
-local img_old = image.load(IMFILE..imname)
+--local img_old = image.load(IMFILE..imname)
 
---local img_old = image.load('./testimg2.jpg')
---img_old = image.scale(img_old, 640, 480)
+local img_old = image.load('./testimg4.jpg')
+img_old = image.scale(img_old, 640, 480)
 
 local img = img_old:clone()
 normalize_global(img, mean_std[1], mean_std[2])
@@ -67,9 +67,8 @@ end
 output = image.scale(outputnew, 640, 480)
 
 -- Sum and thresh
-local th = 0.65
-local output = output:sum(1):squeeze()
-output = output / output:max()
+local th = 0.4
+local output = output:sum(1):squeeze() / 5
 output = output:ge(th)
 --image.display(output)
 
