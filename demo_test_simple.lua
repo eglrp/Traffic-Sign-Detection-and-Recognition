@@ -4,6 +4,7 @@ require 'nnx'
 require 'cunn'
 require 'cudnn'
 require 'gnuplot'
+require 'imgraph'
 draw = require 'draw'
 torch.setdefaulttensortype('torch.FloatTensor')
 
@@ -41,12 +42,12 @@ image.display{image=d1, legend='Layer 1 filters'}
 --myFile:close()
 --]]
 
-local imname = '00123.ppm'
+local imname = '00343.ppm'
 local mean_std = torch.load('MEAN_STD.t7')
---local img_old = image.load(IMFILE..imname)
+local img_old = image.load(IMFILE..imname)
 
-local img_old = image.load('./testimg1.jpg')
-img_old = image.scale(img_old, 640, 480)
+--local img_old = image.load('./testimg2.jpg')
+--img_old = image.scale(img_old, 640, 480)
 
 local img = img_old:clone()
 normalize_global(img, mean_std[1], mean_std[2])
@@ -66,7 +67,7 @@ end
 output = image.scale(outputnew, 640, 480)
 
 -- Sum and thresh
-local th = 0.6
+local th = 0.65
 local output = output:sum(1):squeeze()
 output = output / output:max()
 output = output:ge(th)
@@ -74,52 +75,46 @@ output = output:ge(th)
 
 -- Merge and generate bbox
 -- bwlabel
-local location_r = output:nonzero()
-local location_c = output:t():nonzero()
-local len = location_r:size(1)
-local diff_r = location_r[{ {},1 }]
-local diff_c = location_c[{ {},1 }]
-diff_r = location_r[{ {2,len},{} }] - location_r[{ {1,len-1},{} }]
-diff_c = location_c[{ {2,len},{} }] - location_c[{ {1,len-1},{} }]
-local bwlabel = torch.Tensor(2, output:size(1), output:size(2)):zero()
-local indr, indc = 1, 1
-for i = 2, len do
-	-- Consider row
-	if (diff_r[i-1][1]==0 or diff_r[i-1][1]==1) then
-		bwlabel[{1,location_r[i][1],location_r[i][2]}] = indr
-	else
-		indr = indr + 1
-		bwlabel[{1,location_r[i][1],location_r[i][2]}] = indr
+local graph = imgraph.graph(output:float())
+graph = imgraph.connectcomponents(graph, 0.1) + 10
+graph = torch.cmul(graph, output:float())
+--image.display(graph)
+local location = graph:nonzero()
+local val = graph[location[1][1]][location[1][2]]
+local indx = {}
+table.insert(indx, val)
+for i = 1, location:size(1) do
+	local tmp = graph[location[i][1]][location[i][2]]
+	local flag = true
+	for j = 1, #indx do
+		if (tmp == indx[j]) then
+			flag = false
+			break
+		end
 	end
-	-- Consider col
-	if (diff_c[i-1][1]==0 or diff_c[i-1][1]==1) then
-		bwlabel[{2,location_c[i][2],location_c[i][1]}] = indc
-	else
-		indc = indc + 1
-		bwlabel[{2,location_c[i][2],location_c[i][1]}] = indc
+	if (flag == true) then
+		val = tmp
+		table.insert(indx, val)
 	end
 end
-bwlabel = torch.cmul(bwlabel[1],bwlabel[1]) + bwlabel[2] - 1
-bwlabel[bwlabel:eq(-1)] = 0
-local object_num = bwlabel:max()
-gnuplot.imagesc(bwlabel)
+print(#indx)
 
 -- Plot bbox
 local tmp = img_old[2]
 tmp[output] = 1
 img_old[2] = tmp
-for i = 1, object_num do
-	local tmp = bwlabel:eq(i):nonzero()
+local bias = 2
+for i = 1, #indx do
+	local tmp = graph:eq(indx[i]):nonzero()
 	if (tmp:dim() > 0) then
-		local top = tmp[{ {},1 }]:min()
-		local bottom = tmp[{ {},1 }]:max()
-		local left = tmp[{ {},2 }]:min()
-		local right = tmp[{ {},2 }]:max()
+		local top = tmp[{ {},1 }]:min() - bias
+		local bottom = tmp[{ {},1 }]:max() + bias
+		local left = tmp[{ {},2 }]:min() - bias
+		local right = tmp[{ {},2 }]:max() + bias
 		draw.drawBox(img_old, top, bottom, left, right, 2, {math.random(), math.random(), math.random()})
 		d1 = image.display{image = img_old, win = d1}
 	end
 end
-
 
 
 
